@@ -14,6 +14,7 @@ It tracks Shorts usage over a rolling 24-hour window and can limit by count, act
 - Limit overlay that pauses Shorts and hides Shorts entry points
 - Temporary 5-minute pause
 - Locked settings by default to reduce effortless bypassing
+- Edit lock after Shorts count or time reaches 80% of its limit
 
 ## Install
 

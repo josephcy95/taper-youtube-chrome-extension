@@ -3,6 +3,7 @@ const STORAGE_USAGE = "taperUsage";
 const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
 const EDIT_WINDOW_MS = 30 * 1000;
 const PAUSE_MS = 5 * 60 * 1000;
+const EDIT_LOCK_RATIO = 0.8;
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -46,6 +47,7 @@ let saveTimer = 0;
 let editTimer = 0;
 let pauseTimer = 0;
 let editing = false;
+let usageSummary = { count: 0, timeMs: 0 };
 
 function pruneUsage(usage) {
   const cutoff = Date.now() - ROLLING_WINDOW_MS;
@@ -108,14 +110,22 @@ function readSettingsFromUI() {
 }
 
 function setEditing(nextEditing) {
+  if (nextEditing && isEditLocked()) return;
   editing = nextEditing;
   editableFields.forEach((field) => {
     field.disabled = !editing;
   });
+  fields.edit.disabled = isEditLocked();
   fields.edit.textContent = editing ? "Done" : "Edit";
   fields.edit.classList.toggle("editing", editing);
   clearTimeout(editTimer);
   if (editing) editTimer = setTimeout(() => setEditing(false), EDIT_WINDOW_MS);
+}
+
+function isEditLocked() {
+  const countRatio = usageSummary.count / Math.max(1, settings.countLimit);
+  const timeRatio = usageSummary.timeMs / Math.max(1, settings.timeLimitMinutes * 60 * 1000);
+  return countRatio >= EDIT_LOCK_RATIO || timeRatio >= EDIT_LOCK_RATIO;
 }
 
 function renderSettings(nextSettings) {
@@ -125,12 +135,16 @@ function renderSettings(nextSettings) {
   fields.timeLimitMinutes.value = settings.timeLimitMinutes;
   fields.hintEveryCount.value = settings.hintEveryCount;
   fields.hintEveryMinutes.value = settings.hintEveryMinutes;
+  if (editing && isEditLocked()) setEditing(false);
+  fields.edit.disabled = isEditLocked();
   renderPause();
 }
 
 function renderUsage(usage) {
-  const summary = summarize(usage);
-  fields.statusLine.textContent = `${summary.count} Shorts • ${formatDuration(summary.timeMs)}`;
+  usageSummary = summarize(usage);
+  fields.statusLine.textContent = `${usageSummary.count} Shorts • ${formatDuration(usageSummary.timeMs)}`;
+  if (editing && isEditLocked()) setEditing(false);
+  fields.edit.disabled = isEditLocked();
 }
 
 function renderPause() {
