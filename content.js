@@ -12,7 +12,8 @@
     timeLimitMinutes: 90,
     hintEveryCount: 10,
     hintEveryMinutes: 10,
-    activityGraceSeconds: 90
+    activityGraceSeconds: 90,
+    pausedUntil: 0
   };
 
   const DEFAULT_USAGE = {
@@ -87,7 +88,7 @@
 
   function shouldTrackTime() {
     return (
-      state.settings.enabled &&
+      isActive() &&
       isShortsPage() &&
       document.visibilityState === "visible" &&
       isRecentlyActive() &&
@@ -96,7 +97,7 @@
   }
 
   function isLimitReached() {
-    if (!state.settings.enabled) return false;
+    if (!isActive()) return false;
     const { count, timeMs } = summarize();
     const countReached = count >= state.settings.countLimit;
     const timeReached = timeMs >= state.settings.timeLimitMinutes * 60 * 1000;
@@ -107,8 +108,23 @@
     return countReached || timeReached;
   }
 
-  function formatMinutes(ms) {
-    return `${Math.floor(ms / 60000)}m`;
+  function isPaused() {
+    return Date.now() < Number(state.settings.pausedUntil || 0);
+  }
+
+  function isActive() {
+    return state.settings.enabled && !isPaused();
+  }
+
+  function formatDuration(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
 
   function ensureStyle() {
@@ -134,17 +150,20 @@
 
       #taper-meter {
         position: fixed;
-        top: 76px;
-        left: 50%;
-        transform: translateX(-50%);
+        top: 50%;
+        left: max(18px, calc(50vw - 380px));
+        transform: translateY(-50%);
         z-index: 2147483645;
         display: none;
-        align-items: center;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 5px;
         min-height: 34px;
-        max-width: min(92vw, 420px);
-        padding: 0 13px;
+        max-width: min(34vw, 240px);
+        padding: 11px 13px;
         border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: 999px;
+        border-radius: 8px;
         color: #fff;
         background: rgba(16, 18, 22, 0.56);
         box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
@@ -152,6 +171,16 @@
         font: 600 13px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         letter-spacing: 0;
         pointer-events: none;
+      }
+
+      #taper-meter span {
+        display: block;
+        white-space: nowrap;
+      }
+
+      #taper-meter span + span {
+        color: rgba(255, 255, 255, 0.68);
+        font-weight: 520;
       }
 
       body.taper-on-shorts #taper-meter {
@@ -219,6 +248,15 @@
         font: 700 13px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         cursor: pointer;
       }
+
+      @media (max-width: 900px) {
+        #taper-meter {
+          top: 78px;
+          left: 16px;
+          transform: none;
+          max-width: calc(100vw - 32px);
+        }
+      }
     `;
     document.documentElement.appendChild(style);
   }
@@ -230,6 +268,7 @@
     if (!document.getElementById("taper-meter")) {
       const meter = document.createElement("div");
       meter.id = "taper-meter";
+      meter.setAttribute("aria-live", "polite");
       document.body.appendChild(meter);
     }
 
@@ -255,11 +294,20 @@
     const meter = document.getElementById("taper-meter");
     if (!meter) return;
     const { count, timeMs } = summarize();
-    meter.textContent = `Shorts ${count} / ${state.settings.countLimit} • ${formatMinutes(timeMs)} / ${state.settings.timeLimitMinutes}m`;
+    meter.replaceChildren(
+      textLine(`Shorts ${count} / ${state.settings.countLimit}`),
+      textLine(`${formatDuration(timeMs)} / ${formatDuration(state.settings.timeLimitMinutes * 60 * 1000)}`)
+    );
+  }
+
+  function textLine(text) {
+    const line = document.createElement("span");
+    line.textContent = text;
+    return line;
   }
 
   function showHint(text) {
-    if (!state.settings.enabled || !isShortsPage()) return;
+    if (!isActive() || !isShortsPage()) return;
     ensureUi();
     const hint = document.getElementById("taper-hint");
     hint.textContent = text;
@@ -300,14 +348,14 @@
     if (!document.body) return;
     const onShorts = isShortsPage();
     const reached = isLimitReached();
-    document.body.classList.toggle("taper-on-shorts", onShorts && state.settings.enabled);
+    document.body.classList.toggle("taper-on-shorts", onShorts && isActive());
     document.body.classList.toggle("taper-limit-reached", reached);
     if (reached && onShorts) pauseShortsVideo();
     updateMeter();
   }
 
   async function countCurrentShort() {
-    if (!state.settings.enabled) return;
+    if (!isActive()) return;
     const shortId = getShortId();
     if (!shortId || shortId === state.lastShortId) return;
 
@@ -375,7 +423,7 @@
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "local") return;
       if (changes[STORAGE_SETTINGS]) {
-        state.settings = { ...DEFAULT_SETTINGS, ...(changes[STORAGE_SETTINGS].newValue || {}) };
+        state.settings = { ...DEFAULT_SETTINGS, ...(changes[STORAGE_SETTINGS].newValue || {}), enabled: true };
       }
       if (changes[STORAGE_USAGE]) {
         state.usage = pruneUsage(changes[STORAGE_USAGE].newValue);
@@ -390,7 +438,7 @@
     addListeners();
 
     const stored = await storageGet([STORAGE_SETTINGS, STORAGE_USAGE]);
-    state.settings = { ...DEFAULT_SETTINGS, ...(stored[STORAGE_SETTINGS] || {}) };
+    state.settings = { ...DEFAULT_SETTINGS, ...(stored[STORAGE_SETTINGS] || {}), enabled: true };
     state.usage = pruneUsage(stored[STORAGE_USAGE]);
 
     await storageSet({

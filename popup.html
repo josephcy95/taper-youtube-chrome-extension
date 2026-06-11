@@ -9,44 +9,49 @@
   <body>
     <main class="shell">
       <header class="topbar">
-        <div>
-          <h1>Taper</h1>
-          <p id="statusLine">0 Shorts • 0m</p>
-        </div>
-        <label class="switch" title="Enabled">
-          <input id="enabled" type="checkbox">
-          <span></span>
-        </label>
+        <h1>Taper</h1>
+        <p id="statusLine">0 Shorts • 00:00</p>
       </header>
 
-      <section class="segment" aria-label="Mode">
-        <button type="button" data-mode="count">Count</button>
-        <button type="button" data-mode="time">Time</button>
-        <button type="button" data-mode="both">Both</button>
-        <button type="button" data-mode="either">Either</button>
-      </section>
+      <section class="panel">
+        <div class="section-head">
+          <h2>Shorts Limiter</h2>
+          <button id="edit" type="button">Edit</button>
+        </div>
 
-      <section class="grid">
-        <label>
-          <span>Shorts</span>
+        <label class="row">
+          <span>Condition</span>
+          <select id="mode">
+            <option value="count">Count</option>
+            <option value="time">Time</option>
+            <option value="both">Both</option>
+            <option value="either">Either</option>
+          </select>
+        </label>
+
+        <label class="row">
+          <span>Shorts Count Limit</span>
           <input id="countLimit" type="number" min="1" max="9999" step="1">
         </label>
-        <label>
-          <span>Minutes</span>
+
+        <label class="row">
+          <span>Shorts Time Limit</span>
           <input id="timeLimitMinutes" type="number" min="1" max="1440" step="1">
         </label>
-        <label>
+
+        <label class="row">
           <span>Hint Shorts</span>
           <input id="hintEveryCount" type="number" min="0" max="9999" step="1">
         </label>
-        <label>
-          <span>Hint Min</span>
+
+        <label class="row">
+          <span>Hint Minutes</span>
           <input id="hintEveryMinutes" type="number" min="0" max="1440" step="1">
         </label>
       </section>
 
       <footer>
-        <button id="reset" type="button">Reset</button>
+        <button id="pause" type="button">Pause 5m</button>
       </footer>
     </main>
     <script src="popup.js"></script>
