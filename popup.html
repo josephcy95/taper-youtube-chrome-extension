@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Taper</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Taper</h1>
+          <p id="statusLine">0 Shorts • 0m</p>
+        </div>
+        <label class="switch" title="Enabled">
+          <input id="enabled" type="checkbox">
+          <span></span>
+        </label>
+      </header>
+
+      <section class="segment" aria-label="Mode">
+        <button type="button" data-mode="count">Count</button>
+        <button type="button" data-mode="time">Time</button>
+        <button type="button" data-mode="both">Both</button>
+        <button type="button" data-mode="either">Either</button>
+      </section>
+
+      <section class="grid">
+        <label>
+          <span>Shorts</span>
+          <input id="countLimit" type="number" min="1" max="9999" step="1">
+        </label>
+        <label>
+          <span>Minutes</span>
+          <input id="timeLimitMinutes" type="number" min="1" max="1440" step="1">
+        </label>
+        <label>
+          <span>Hint Shorts</span>
+          <input id="hintEveryCount" type="number" min="0" max="9999" step="1">
+        </label>
+        <label>
+          <span>Hint Min</span>
+          <input id="hintEveryMinutes" type="number" min="0" max="1440" step="1">
+        </label>
+      </section>
+
+      <footer>
+        <button id="reset" type="button">Reset</button>
+      </footer>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
