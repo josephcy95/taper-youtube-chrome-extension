@@ -151,7 +151,7 @@
       #taper-meter {
         position: fixed;
         top: 50%;
-        left: max(72px, calc(50vw - 520px));
+        left: max(48px, calc(25vw - 248px));
         transform: translateY(-50%);
         z-index: 2147483645;
         display: none;
