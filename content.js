@@ -4,6 +4,7 @@
   const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
   const TIME_TICK_MS = 1000;
   const DUPLICATE_COUNT_GUARD_MS = 15 * 60 * 1000;
+  const LOOP_PROMPT_LIMIT = 10;
 
   const DEFAULT_SETTINGS = {
     enabled: true,
@@ -28,6 +29,11 @@
     usage: { ...DEFAULT_USAGE },
     lastShortId: "",
     lastInputAt: Date.now(),
+    loopShortId: "",
+    loopVideo: null,
+    lastVideoTime: 0,
+    loopCount: 0,
+    presencePromptShortId: "",
     routeTimer: 0,
     tickTimer: 0
   };
@@ -226,7 +232,23 @@
         display: grid;
       }
 
-      #taper-card {
+      #taper-presence-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: none;
+        place-items: center;
+        padding: 20px;
+        background: rgba(7, 9, 12, 0.48);
+        backdrop-filter: blur(20px);
+      }
+
+      body.taper-on-shorts.taper-presence-check #taper-presence-overlay {
+        display: grid;
+      }
+
+      #taper-card,
+      #taper-presence-card {
         width: min(88vw, 360px);
         padding: 22px;
         border: 1px solid rgba(255, 255, 255, 0.18);
@@ -238,7 +260,8 @@
         font: 600 16px/1.25 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
-      #taper-card button {
+      #taper-card button,
+      #taper-presence-card button {
         margin-top: 16px;
         min-width: 104px;
         min-height: 38px;
@@ -292,6 +315,24 @@
       overlay.querySelector("button").addEventListener("click", () => {
         location.href = "/";
       });
+      document.body.appendChild(overlay);
+    }
+
+    if (!document.getElementById("taper-presence-overlay")) {
+      const overlay = document.createElement("div");
+      overlay.id = "taper-presence-overlay";
+
+      const card = document.createElement("div");
+      card.id = "taper-presence-card";
+      const message = document.createElement("div");
+      message.textContent = "Still here?";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Resume";
+      button.addEventListener("click", resumeFromPresenceCheck);
+
+      card.append(message, button);
+      overlay.appendChild(card);
       document.body.appendChild(overlay);
     }
   }
@@ -351,6 +392,62 @@
     if (video) video.pause();
   }
 
+  function resetLoopTracker(shortId = getShortId()) {
+    state.loopShortId = shortId;
+    state.loopVideo = null;
+    state.lastVideoTime = 0;
+    state.loopCount = 0;
+    state.presencePromptShortId = "";
+    document.body?.classList.remove("taper-presence-check");
+  }
+
+  function trackVideoLoop() {
+    if (!isShortsPage()) {
+      resetLoopTracker("");
+      return;
+    }
+
+    const shortId = getShortId();
+    const video = document.querySelector("video");
+    if (!(video instanceof HTMLVideoElement) || !Number.isFinite(video.duration) || video.duration < 2) {
+      return;
+    }
+
+    if (state.loopShortId !== shortId || state.loopVideo !== video) {
+      resetLoopTracker(shortId);
+      state.loopVideo = video;
+      state.lastVideoTime = video.currentTime;
+      return;
+    }
+
+    const previousTime = state.lastVideoTime;
+    const currentTime = video.currentTime;
+    state.lastVideoTime = currentTime;
+
+    const wrappedToStart = previousTime > Math.max(1, video.duration - 1.5) && currentTime < 1.5;
+    const jumpedBackward = previousTime - currentTime > Math.max(2, video.duration * 0.5) && currentTime < Math.min(3, video.duration * 0.25);
+    if (!wrappedToStart && !jumpedBackward) return;
+
+    state.loopCount += 1;
+    if (state.loopCount >= LOOP_PROMPT_LIMIT && state.presencePromptShortId !== shortId) {
+      state.presencePromptShortId = shortId;
+      showPresenceCheck();
+    }
+  }
+
+  function showPresenceCheck() {
+    ensureUi();
+    pauseShortsVideo();
+    document.body?.classList.add("taper-presence-check");
+  }
+
+  function resumeFromPresenceCheck() {
+    document.body?.classList.remove("taper-presence-check");
+    state.presencePromptShortId = getShortId();
+    const video = document.querySelector("video");
+    if (video instanceof HTMLVideoElement) video.play().catch(() => {});
+  }
+
   function applyEnforcement() {
     if (!document.body) return;
     const onShorts = isShortsPage();
@@ -378,6 +475,7 @@
   }
 
   function tickTime() {
+    trackVideoLoop();
     if (shouldTrackTime()) {
       state.usage.timeBuckets.push({ t: Date.now(), ms: TIME_TICK_MS });
       saveUsage();
