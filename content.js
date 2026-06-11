@@ -151,7 +151,7 @@
       #taper-meter {
         position: fixed;
         top: 50%;
-        left: 24px;
+        left: max(72px, calc(50vw - 520px));
         transform: translateY(-50%);
         z-index: 2147483645;
         display: none;
@@ -211,35 +211,6 @@
         transform: translate(-50%, 0);
       }
 
-      #taper-dislike-channel {
-        position: fixed;
-        top: calc(50% - 170px);
-        right: max(20px, calc(50vw - 282px));
-        z-index: 2147483645;
-        display: none;
-        min-width: 54px;
-        height: 54px;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        border-radius: 50%;
-        color: #fff;
-        background: rgba(16, 18, 22, 0.5);
-        box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
-        backdrop-filter: blur(18px);
-        font: 800 13px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        letter-spacing: 0;
-        cursor: pointer;
-      }
-
-      body.taper-on-shorts #taper-dislike-channel {
-        display: block;
-      }
-
-      #taper-dislike-channel:hover,
-      #taper-dislike-channel.working {
-        background: rgba(141, 223, 199, 0.22);
-        border-color: rgba(141, 223, 199, 0.42);
-      }
-
       #taper-overlay {
         position: fixed;
         inset: 0;
@@ -292,10 +263,6 @@
           font-size: 13px;
         }
 
-        #taper-dislike-channel {
-          top: 142px;
-          right: 16px;
-        }
       }
     `;
     document.documentElement.appendChild(style);
@@ -318,17 +285,6 @@
       document.body.appendChild(hint);
     }
 
-    if (!document.getElementById("taper-dislike-channel")) {
-      const action = document.createElement("button");
-      action.id = "taper-dislike-channel";
-      action.type = "button";
-      action.textContent = "Less";
-      action.title = "Don't recommend this channel";
-      action.setAttribute("aria-label", "Don't recommend this channel");
-      action.addEventListener("click", dislikeChannelAndAdvance);
-      document.body.appendChild(action);
-    }
-
     if (!document.getElementById("taper-overlay")) {
       const overlay = document.createElement("div");
       overlay.id = "taper-overlay";
@@ -338,146 +294,6 @@
       });
       document.body.appendChild(overlay);
     }
-  }
-
-  async function dislikeChannelAndAdvance() {
-    if (!isShortsPage()) return;
-    const button = document.getElementById("taper-dislike-channel");
-    button?.classList.add("working");
-
-    try {
-      const menuButton = findShortsMoreButton();
-      if (!menuButton) {
-        showHint("Menu not found");
-        return;
-      }
-
-      menuButton.click();
-      const menuItem = await waitForMenuItem([
-        "don't recommend this channel",
-        "dont recommend this channel",
-        "don’t recommend this channel",
-        "don't recommend channel",
-        "dont recommend channel",
-        "don’t recommend channel"
-      ]);
-
-      if (!menuItem) {
-        showHint("Action not found");
-        pressEscape();
-        return;
-      }
-
-      menuItem.click();
-      setTimeout(advanceShorts, 450);
-    } finally {
-      setTimeout(() => button?.classList.remove("working"), 700);
-    }
-  }
-
-  function findShortsMoreButton() {
-    const selectors = [
-      'button[aria-label*="More actions" i]',
-      'button[aria-label*="More" i]',
-      'button[aria-label*="Action menu" i]',
-      'yt-icon-button[aria-label*="More" i] button',
-      'yt-button-shape button[aria-label*="More" i]'
-    ];
-    const candidates = selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)));
-    const visible = candidates.filter((button) => isVisible(button) && button.getBoundingClientRect().top > 80);
-    return visible.sort((a, b) => scoreMoreButton(b) - scoreMoreButton(a))[0] || null;
-  }
-
-  function scoreMoreButton(button) {
-    const rect = button.getBoundingClientRect();
-    const centerY = rect.top + rect.height / 2;
-    return rect.left + Math.max(0, 260 - Math.abs(centerY - window.innerHeight / 2));
-  }
-
-  function waitForMenuItem(labels) {
-    const started = Date.now();
-    return new Promise((resolve) => {
-      const find = () => {
-        const item = findMenuItem(labels);
-        if (item || Date.now() - started > 1600) {
-          resolve(item);
-          return;
-        }
-        setTimeout(find, 80);
-      };
-      find();
-    });
-  }
-
-  function findMenuItem(labels) {
-    const items = Array.from(document.querySelectorAll([
-      'ytd-menu-service-item-renderer',
-      'ytd-menu-navigation-item-renderer',
-      'tp-yt-paper-item',
-      'yt-list-item-view-model',
-      '[role="menuitem"]'
-    ].join(",")));
-    return items.find((item) => {
-      if (!isVisible(item)) return false;
-      const text = normalizeText(item.textContent);
-      return labels.some((label) => text.includes(label));
-    }) || null;
-  }
-
-  function normalizeText(text) {
-    return String(text || "")
-      .toLowerCase()
-      .replace(/[’']/g, "'")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  function advanceShorts() {
-    const nextButton = Array.from(document.querySelectorAll([
-      'button[aria-label*="Next" i]',
-      'button[aria-label*="Next video" i]',
-      'ytd-button-renderer[aria-label*="Next" i] button'
-    ].join(","))).find((button) => isVisible(button) && button.getBoundingClientRect().top > 80);
-
-    if (nextButton) {
-      nextButton.click();
-      return;
-    }
-
-    window.dispatchEvent(new KeyboardEvent("keydown", {
-      key: "ArrowDown",
-      code: "ArrowDown",
-      keyCode: 40,
-      which: 40,
-      bubbles: true
-    }));
-  }
-
-  function pressEscape() {
-    window.dispatchEvent(new KeyboardEvent("keydown", {
-      key: "Escape",
-      code: "Escape",
-      keyCode: 27,
-      which: 27,
-      bubbles: true
-    }));
-  }
-
-  function isVisible(element) {
-    if (!(element instanceof Element)) return false;
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    return (
-      rect.width > 0 &&
-      rect.height > 0 &&
-      rect.bottom > 0 &&
-      rect.right > 0 &&
-      rect.top < window.innerHeight &&
-      rect.left < window.innerWidth &&
-      style.visibility !== "hidden" &&
-      style.display !== "none" &&
-      Number(style.opacity || 1) > 0
-    );
   }
 
   function updateMeter() {
