@@ -9,15 +9,29 @@
   <body>
     <main class="shell">
       <header class="topbar">
-        <h1>Taper</h1>
-        <p id="statusLine">0 Shorts • 00:00</p>
+        <div>
+          <h1>Taper</h1>
+          <p id="statusLine">0 Shorts • 00:00</p>
+        </div>
+        <button id="edit" type="button">Edit</button>
       </header>
 
       <section class="panel">
         <div class="section-head">
-          <h2>Shorts Limiter</h2>
-          <button id="edit" type="button">Edit</button>
+          <h2>Picture in Picture</h2>
         </div>
+
+        <label class="row checkbox-row">
+          <span>Enable PiP</span>
+          <input id="pipEnabled" type="checkbox">
+        </label>
+      </section>
+
+      <details class="panel collapsible">
+        <summary class="section-head">
+          <h2>YouTube Shorts</h2>
+          <span class="summary-icon" aria-hidden="true"></span>
+        </summary>
 
         <label class="row">
           <span>Condition</span>
@@ -40,15 +54,25 @@
         </label>
 
         <label class="row">
-          <span>Hint Shorts</span>
+          <span>Block Every Shorts</span>
           <input id="hintEveryCount" type="number" min="0" max="9999" step="1">
         </label>
 
         <label class="row">
-          <span>Hint Minutes</span>
+          <span>Block Every Minutes</span>
           <input id="hintEveryMinutes" type="number" min="0" max="1440" step="1">
         </label>
-      </section>
+
+        <label class="row">
+          <span>Block Seconds</span>
+          <input id="hintDurationSeconds" type="number" min="1" max="60" step="1">
+        </label>
+
+        <label class="row">
+          <span>Loop Check Plays</span>
+          <input id="loopPromptLimit" type="number" min="1" max="100" step="1">
+        </label>
+      </details>
 
       <footer>
         <button id="pause" type="button">Pause 5m</button>

@@ -7,11 +7,14 @@ const EDIT_LOCK_RATIO = 0.8;
 
 const DEFAULT_SETTINGS = {
   enabled: true,
+  pipEnabled: true,
   mode: "count",
   countLimit: 200,
   timeLimitMinutes: 90,
   hintEveryCount: 10,
   hintEveryMinutes: 10,
+  hintDurationSeconds: 5,
+  loopPromptLimit: 10,
   activityGraceSeconds: 90,
   pausedUntil: 0
 };
@@ -24,22 +27,32 @@ const DEFAULT_USAGE = {
 };
 
 const fields = {
+  pipEnabled: document.getElementById("pipEnabled"),
   mode: document.getElementById("mode"),
   countLimit: document.getElementById("countLimit"),
   timeLimitMinutes: document.getElementById("timeLimitMinutes"),
   hintEveryCount: document.getElementById("hintEveryCount"),
   hintEveryMinutes: document.getElementById("hintEveryMinutes"),
+  hintDurationSeconds: document.getElementById("hintDurationSeconds"),
+  loopPromptLimit: document.getElementById("loopPromptLimit"),
   statusLine: document.getElementById("statusLine"),
   edit: document.getElementById("edit"),
   pause: document.getElementById("pause")
 };
 
-const editableFields = [
+const shortsFields = [
   fields.mode,
   fields.countLimit,
   fields.timeLimitMinutes,
   fields.hintEveryCount,
-  fields.hintEveryMinutes
+  fields.hintEveryMinutes,
+  fields.hintDurationSeconds,
+  fields.loopPromptLimit
+];
+
+const editableFields = [
+  fields.pipEnabled,
+  ...shortsFields
 ];
 
 let settings = { ...DEFAULT_SETTINGS };
@@ -101,21 +114,28 @@ function readSettingsFromUI() {
   return {
     ...settings,
     enabled: true,
+    pipEnabled: fields.pipEnabled.checked,
     mode: fields.mode.value,
     countLimit: clampNumber(fields.countLimit.value, 1, 9999, DEFAULT_SETTINGS.countLimit),
     timeLimitMinutes: clampNumber(fields.timeLimitMinutes.value, 1, 1440, DEFAULT_SETTINGS.timeLimitMinutes),
     hintEveryCount: clampNumber(fields.hintEveryCount.value, 0, 9999, DEFAULT_SETTINGS.hintEveryCount),
-    hintEveryMinutes: clampNumber(fields.hintEveryMinutes.value, 0, 1440, DEFAULT_SETTINGS.hintEveryMinutes)
+    hintEveryMinutes: clampNumber(fields.hintEveryMinutes.value, 0, 1440, DEFAULT_SETTINGS.hintEveryMinutes),
+    hintDurationSeconds: clampNumber(fields.hintDurationSeconds.value, 1, 60, DEFAULT_SETTINGS.hintDurationSeconds),
+    loopPromptLimit: clampNumber(fields.loopPromptLimit.value, 1, 100, DEFAULT_SETTINGS.loopPromptLimit)
   };
 }
 
 function setEditing(nextEditing) {
-  if (nextEditing && isEditLocked()) return;
   editing = nextEditing;
-  editableFields.forEach((field) => {
+  fields.pipEnabled.disabled = !editing;
+  shortsFields.forEach((field) => {
     field.disabled = !editing;
   });
-  fields.edit.disabled = isEditLocked();
+  if (isEditLocked()) {
+    shortsFields.forEach((field) => {
+      field.disabled = true;
+    });
+  }
   fields.edit.textContent = editing ? "Done" : "Edit";
   fields.edit.classList.toggle("editing", editing);
   clearTimeout(editTimer);
@@ -130,21 +150,22 @@ function isEditLocked() {
 
 function renderSettings(nextSettings) {
   settings = { ...DEFAULT_SETTINGS, ...nextSettings, enabled: true };
+  fields.pipEnabled.checked = settings.pipEnabled;
   fields.mode.value = settings.mode;
   fields.countLimit.value = settings.countLimit;
   fields.timeLimitMinutes.value = settings.timeLimitMinutes;
   fields.hintEveryCount.value = settings.hintEveryCount;
   fields.hintEveryMinutes.value = settings.hintEveryMinutes;
-  if (editing && isEditLocked()) setEditing(false);
-  fields.edit.disabled = isEditLocked();
+  fields.hintDurationSeconds.value = settings.hintDurationSeconds;
+  fields.loopPromptLimit.value = settings.loopPromptLimit;
+  setEditing(editing);
   renderPause();
 }
 
 function renderUsage(usage) {
   usageSummary = summarize(usage);
   fields.statusLine.textContent = `${usageSummary.count} Shorts • ${formatDuration(usageSummary.timeMs)}`;
-  if (editing && isEditLocked()) setEditing(false);
-  fields.edit.disabled = isEditLocked();
+  setEditing(editing);
 }
 
 function renderPause() {

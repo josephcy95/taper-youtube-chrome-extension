@@ -15,7 +15,7 @@
 }
 
 body {
-  width: 340px;
+  width: 360px;
   margin: 0;
   color: var(--text);
   background:
@@ -39,7 +39,7 @@ select {
 
 .topbar {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 14px;
@@ -78,6 +78,32 @@ h2 {
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.26);
 }
 
+.panel + .panel {
+  margin-top: 10px;
+}
+
+.collapsible > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary-icon {
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 160ms ease;
+}
+
+.collapsible[open] .summary-icon {
+  transform: rotate(225deg);
+}
+
 .section-head,
 .row {
   display: grid;
@@ -114,6 +140,17 @@ select {
   outline: none;
 }
 
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.checkbox-row {
+  min-height: 48px;
+}
+
 select {
   cursor: pointer;
 }
@@ -126,6 +163,10 @@ select:focus {
 input:disabled,
 select:disabled {
   opacity: 0.6;
+  cursor: default;
+}
+
+input[type="checkbox"]:disabled {
   cursor: default;
 }
 

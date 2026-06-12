@@ -4,15 +4,17 @@
   const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
   const TIME_TICK_MS = 1000;
   const DUPLICATE_COUNT_GUARD_MS = 15 * 60 * 1000;
-  const LOOP_PROMPT_LIMIT = 10;
 
   const DEFAULT_SETTINGS = {
     enabled: true,
+    pipEnabled: true,
     mode: "count",
     countLimit: 200,
     timeLimitMinutes: 90,
     hintEveryCount: 10,
     hintEveryMinutes: 10,
+    hintDurationSeconds: 5,
+    loopPromptLimit: 10,
     activityGraceSeconds: 90,
     pausedUntil: 0
   };
@@ -35,7 +37,11 @@
     loopCount: 0,
     presencePromptShortId: "",
     routeTimer: 0,
-    tickTimer: 0
+    tickTimer: 0,
+    shortBlockUntil: 0,
+    shortBlockTimer: 0,
+    backgroundPauseUsed: false,
+    pipResizeObserver: null
   };
 
   function storageGet(keys) {
@@ -96,6 +102,7 @@
     return (
       isActive() &&
       isShortsPage() &&
+      !isShortsFrozen() &&
       document.visibilityState === "visible" &&
       isRecentlyActive() &&
       Boolean(activeVideo())
@@ -194,30 +201,8 @@
         display: flex;
       }
 
-      #taper-hint {
-        position: fixed;
-        top: 122px;
-        left: 50%;
-        transform: translate(-50%, -8px);
-        z-index: 2147483646;
-        opacity: 0;
-        padding: 8px 11px;
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        border-radius: 999px;
-        color: #fff;
-        background: rgba(16, 18, 22, 0.62);
-        backdrop-filter: blur(18px);
-        font: 600 12px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        pointer-events: none;
-        transition: opacity 180ms ease, transform 180ms ease;
-      }
-
-      #taper-hint.show {
-        opacity: 1;
-        transform: translate(-50%, 0);
-      }
-
-      #taper-overlay {
+      #taper-overlay,
+      #taper-break-overlay {
         position: fixed;
         inset: 0;
         z-index: 2147483647;
@@ -229,6 +214,10 @@
       }
 
       body.taper-on-shorts.taper-limit-reached #taper-overlay {
+        display: grid;
+      }
+
+      body.taper-on-shorts.taper-break-blocked #taper-break-overlay {
         display: grid;
       }
 
@@ -248,6 +237,7 @@
       }
 
       #taper-card,
+      #taper-break-card,
       #taper-presence-card {
         width: min(88vw, 360px);
         padding: 22px;
@@ -258,6 +248,14 @@
         box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
         text-align: center;
         font: 600 16px/1.25 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      #taper-break-card strong {
+        display: block;
+        margin-top: 12px;
+        color: #89d8c1;
+        font-size: 28px;
+        line-height: 1;
       }
 
       #taper-card button,
@@ -302,12 +300,6 @@
       document.body.appendChild(meter);
     }
 
-    if (!document.getElementById("taper-hint")) {
-      const hint = document.createElement("div");
-      hint.id = "taper-hint";
-      document.body.appendChild(hint);
-    }
-
     if (!document.getElementById("taper-overlay")) {
       const overlay = document.createElement("div");
       overlay.id = "taper-overlay";
@@ -315,6 +307,13 @@
       overlay.querySelector("button").addEventListener("click", () => {
         location.href = "/";
       });
+      document.body.appendChild(overlay);
+    }
+
+    if (!document.getElementById("taper-break-overlay")) {
+      const overlay = document.createElement("div");
+      overlay.id = "taper-break-overlay";
+      overlay.innerHTML = '<div id="taper-break-card"><div id="taper-break-message">Shorts break</div><strong id="taper-break-countdown">5</strong></div>';
       document.body.appendChild(overlay);
     }
 
@@ -354,14 +353,55 @@
     return line;
   }
 
-  function showHint(text) {
-    if (!isActive() || !isShortsPage()) return;
+  function isTimedShortsBlockActive() {
+    return isShortsPage() && Date.now() < state.shortBlockUntil;
+  }
+
+  function isShortsFrozen() {
+    return isTimedShortsBlockActive() || document.body?.classList.contains("taper-presence-check");
+  }
+
+  function updateShortsBlockerUi(message) {
     ensureUi();
-    const hint = document.getElementById("taper-hint");
-    hint.textContent = text;
-    hint.classList.add("show");
-    clearTimeout(showHint.timer);
-    showHint.timer = setTimeout(() => hint.classList.remove("show"), 1800);
+    const messageNode = document.getElementById("taper-break-message");
+    const countdownNode = document.getElementById("taper-break-countdown");
+    const remainingSeconds = Math.max(0, Math.ceil((state.shortBlockUntil - Date.now()) / 1000));
+    if (messageNode) messageNode.textContent = message;
+    if (countdownNode) countdownNode.textContent = String(remainingSeconds);
+  }
+
+  function clearShortsBlocker(shouldResume = true) {
+    clearTimeout(state.shortBlockTimer);
+    state.shortBlockTimer = 0;
+    state.shortBlockUntil = 0;
+    document.body?.classList.remove("taper-break-blocked");
+    if (shouldResume && isShortsPage() && document.visibilityState === "visible" && !isLimitReached()) {
+      const video = document.querySelector("video");
+      if (video instanceof HTMLVideoElement) video.play().catch(() => {});
+    }
+  }
+
+  function showShortsBlocker(message) {
+    if (!isActive() || !isShortsPage()) return;
+    const durationMs = Math.max(1, state.settings.hintDurationSeconds) * 1000;
+    state.shortBlockUntil = Date.now() + durationMs;
+    document.body?.classList.add("taper-break-blocked");
+    pauseShortsVideo();
+
+    const tick = () => {
+      if (!isTimedShortsBlockActive()) {
+        clearShortsBlocker();
+        applyEnforcement();
+        return;
+      }
+
+      pauseShortsVideo();
+      updateShortsBlockerUi(message);
+      state.shortBlockTimer = setTimeout(tick, 250);
+    };
+
+    clearTimeout(state.shortBlockTimer);
+    tick();
   }
 
   function maybeShowHints() {
@@ -375,14 +415,14 @@
 
     if (countStep > state.usage.lastCountHintStep && countStep > 0) {
       state.usage.lastCountHintStep = countStep;
-      showHint(`${countStep * state.settings.hintEveryCount} Shorts`);
+      showShortsBlocker(`${countStep * state.settings.hintEveryCount} Shorts watched`);
       saveUsage();
       return;
     }
 
     if (timeStep > state.usage.lastTimeHintStep && timeStep > 0) {
       state.usage.lastTimeHintStep = timeStep;
-      showHint(`${timeStep * state.settings.hintEveryMinutes}m Shorts`);
+      showShortsBlocker(`${timeStep * state.settings.hintEveryMinutes} minutes on Shorts`);
       saveUsage();
     }
   }
@@ -390,6 +430,115 @@
   function pauseShortsVideo() {
     const video = activeVideo() || document.querySelector("video");
     if (video) video.pause();
+  }
+
+  function findLargestPictureInPictureVideo() {
+    const videos = Array.from(document.querySelectorAll("video"))
+      .filter((video) => video instanceof HTMLVideoElement)
+      .filter((video) => video.readyState !== 0)
+      .filter((video) => video.disablePictureInPicture === false)
+      .sort((first, second) => {
+        const firstRect = first.getClientRects()[0] || { width: 0, height: 0 };
+        const secondRect = second.getClientRects()[0] || { width: 0, height: 0 };
+        return secondRect.width * secondRect.height - firstRect.width * firstRect.height;
+      });
+
+    return videos[0] || null;
+  }
+
+  async function requestPictureInPicture(video) {
+    if (!state.settings.pipEnabled || isShortsPage() || !(video instanceof HTMLVideoElement)) return;
+    await video.requestPictureInPicture();
+    video.dataset.taperPip = "true";
+    video.addEventListener(
+      "leavepictureinpicture",
+      () => {
+        delete video.dataset.taperPip;
+        state.pipResizeObserver?.disconnect();
+        state.pipResizeObserver = null;
+      },
+      { once: true }
+    );
+
+    state.pipResizeObserver?.disconnect();
+    state.pipResizeObserver = new ResizeObserver(maybeUpdatePictureInPictureVideo);
+    state.pipResizeObserver.observe(video);
+  }
+
+  function maybeUpdatePictureInPictureVideo(entries) {
+    const observedVideo = entries[0]?.target;
+    if (!document.pictureInPictureElement || !observedVideo) {
+      state.pipResizeObserver?.disconnect();
+      state.pipResizeObserver = null;
+      return;
+    }
+
+    const video = findLargestPictureInPictureVideo();
+    if (video && video !== observedVideo) {
+      requestPictureInPicture(video).catch(() => {});
+    }
+  }
+
+  async function togglePictureInPicture() {
+    if (!state.settings.pipEnabled) return;
+
+    if (isShortsPage()) {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      }
+      return;
+    }
+
+    if (document.pictureInPictureElement) {
+      await document.exitPictureInPicture();
+      return;
+    }
+
+    const video = findLargestPictureInPictureVideo();
+    if (video) await requestPictureInPicture(video);
+  }
+
+  function enforcePictureInPicturePolicy() {
+    if ((!state.settings.pipEnabled || isShortsPage()) && document.pictureInPictureElement) {
+      document.exitPictureInPicture().catch(() => {});
+    }
+  }
+
+  function applyPictureInPictureAvailability() {
+    const disable = isShortsPage();
+    document.querySelectorAll("video").forEach((video) => {
+      if (!(video instanceof HTMLVideoElement)) return;
+
+      if (disable) {
+        if (!("taperOriginalDisablePip" in video.dataset)) {
+          video.dataset.taperOriginalDisablePip = String(video.disablePictureInPicture);
+        }
+        video.disablePictureInPicture = true;
+        return;
+      }
+
+      if ("taperOriginalDisablePip" in video.dataset) {
+        video.disablePictureInPicture = video.dataset.taperOriginalDisablePip === "true";
+        delete video.dataset.taperOriginalDisablePip;
+      }
+    });
+  }
+
+  function setupPictureInPicture() {
+    if ("mediaSession" in navigator) {
+      try {
+        navigator.mediaSession.setActionHandler("enterpictureinpicture", () => {
+          if (!state.settings.pipEnabled || isShortsPage()) return;
+          const video = findLargestPictureInPictureVideo();
+          if (video) requestPictureInPicture(video).catch(() => {});
+        });
+      } catch (_) {}
+    }
+
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message?.type !== "taper-toggle-picture-in-picture") return;
+      togglePictureInPicture().catch(() => {});
+    });
   }
 
   function resetLoopTracker(shortId = getShortId()) {
@@ -402,6 +551,11 @@
   }
 
   function trackVideoLoop() {
+    if (isTimedShortsBlockActive()) {
+      pauseShortsVideo();
+      return;
+    }
+
     if (!isShortsPage()) {
       resetLoopTracker("");
       return;
@@ -429,7 +583,7 @@
     if (!wrappedToStart && !jumpedBackward) return;
 
     state.loopCount += 1;
-    if (state.loopCount >= LOOP_PROMPT_LIMIT && state.presencePromptShortId !== shortId) {
+    if (state.loopCount >= state.settings.loopPromptLimit && state.presencePromptShortId !== shortId) {
       state.presencePromptShortId = shortId;
       showPresenceCheck();
     }
@@ -437,6 +591,7 @@
 
   function showPresenceCheck() {
     ensureUi();
+    clearShortsBlocker(false);
     pauseShortsVideo();
     document.body?.classList.add("taper-presence-check");
   }
@@ -452,14 +607,18 @@
     if (!document.body) return;
     const onShorts = isShortsPage();
     const reached = isLimitReached();
+    if (!onShorts) clearShortsBlocker(false);
+    applyPictureInPictureAvailability();
+    enforcePictureInPicturePolicy();
     document.body.classList.toggle("taper-on-shorts", onShorts && isActive());
     document.body.classList.toggle("taper-limit-reached", reached);
-    if (reached && onShorts) pauseShortsVideo();
+    if ((reached || isShortsFrozen()) && onShorts) pauseShortsVideo();
     updateMeter();
   }
 
   async function countCurrentShort() {
     if (!isActive()) return;
+    if (isShortsFrozen()) return;
     const shortId = getShortId();
     if (!shortId || shortId === state.lastShortId) return;
 
@@ -513,9 +672,26 @@
     state.lastInputAt = Date.now();
   }
 
+  function maybePauseShortsOnFirstBackground() {
+    if (document.visibilityState !== "hidden" || !isShortsPage() || state.backgroundPauseUsed) return;
+    state.backgroundPauseUsed = true;
+    pauseShortsVideo();
+  }
+
+  function blockTimedShortsInput(event) {
+    if (!isTimedShortsBlockActive()) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    pauseShortsVideo();
+  }
+
   function addListeners() {
     ["wheel", "keydown", "pointerdown", "touchstart", "scroll"].forEach((eventName) => {
       window.addEventListener(eventName, markInput, { passive: true, capture: true });
+    });
+
+    ["wheel", "keydown", "touchmove", "pointerdown"].forEach((eventName) => {
+      window.addEventListener(eventName, blockTimedShortsInput, { passive: false, capture: true });
     });
 
     ["yt-navigate-finish", "yt-page-type-changed", "popstate", "taper-location-change"].forEach((eventName) => {
@@ -523,7 +699,10 @@
       document.addEventListener(eventName, scheduleRouteCheck);
     });
 
-    document.addEventListener("visibilitychange", applyEnforcement);
+    document.addEventListener("visibilitychange", () => {
+      maybePauseShortsOnFirstBackground();
+      applyEnforcement();
+    });
 
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "local") return;
@@ -540,6 +719,7 @@
   async function init() {
     ensureUi();
     patchHistory();
+    setupPictureInPicture();
     addListeners();
 
     const stored = await storageGet([STORAGE_SETTINGS, STORAGE_USAGE]);

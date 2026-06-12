@@ -7,7 +7,19 @@
     "default_popup": "popup.html",
     "default_title": "Taper"
   },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "toggle-picture-in-picture": {
+      "suggested_key": {
+        "default": "Alt+P"
+      },
+      "description": "Toggle picture-in-picture on YouTube"
+    }
+  },
   "permissions": [
+    "activeTab",
     "storage"
   ],
   "content_scripts": [
